@@ -5,81 +5,29 @@ import java.util.HashMap;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.rallydev.rest.request.QueryRequest;
-import com.rallydev.rest.request.UpdateRequest;
-import com.rallydev.rest.response.QueryResponse;
+import com.sample.rally.controller.ProjectController;
+import com.sample.rally.controller.WorkspaceController;
 import com.sample.rally.data.Project;
-import com.sample.rally.data.UserProfile;
 
 public class UpdateDefaultWorkspace extends RallyTask
 {
 	private String		sourceProject;
-	protected String	sourceWorkspace		= "";
-	protected String	sourceWorkspaceId	= "";
-	protected String	destWorkspaceId		= "";
-	protected String	destWorkspace		= "";
-	private Boolean		includeChildren		= false;
+	protected String	sourceWorkspace	= "";
+	protected String	destWorkspace	= "";
+	private Boolean		includeChildren	= false;
 
 	@Override
 	public void performTask() throws Exception
 	{
-		sourceWorkspaceId = getWorkspaceReference(sourceWorkspace);
-		destWorkspaceId = getWorkspaceReference(destWorkspace);
+		ProjectController project = new ProjectController();
 
-		HashMap<String, Project> sourceProjectReferences = loadProjectTree(sourceWorkspaceId, sourceProject, includeChildren);
-		HashMap<String, Project> destProjectReferences = loadProjectTree(destWorkspaceId, sourceProject, includeChildren);
+		String sourceWorkspaceId = WorkspaceController.getWorkspaceReference(sourceWorkspace);
+		String destWorkspaceId = WorkspaceController.getWorkspaceReference(destWorkspace);
 
-		QueryRequest userProfileRequest = new UserProfile().getQueryRequest();
-		userProfileRequest.setWorkspace(sourceWorkspaceId);
+		HashMap<String, Project> sourceProjectReferences = project.loadProjectTree(sourceWorkspaceId, sourceProject, includeChildren);
+		HashMap<String, Project> destProjectReferences = project.loadProjectTree(destWorkspaceId, sourceProject, includeChildren);
 
-		QueryResponse projectsResponse = restApi.query(userProfileRequest);
-		log.info("Items Found: " + projectsResponse.getTotalResultCount());
-
-		printErrorsAndWarnings(projectsResponse);
-
-		int nullCount = 0;
-		int count = 0;
-		int numProcessed = 0;
-		for (JsonElement result : projectsResponse.getResults())
-		{
-			UserProfile profile = new UserProfile();
-			profile.readObject(result.getAsJsonObject());
-			if (profile.getDefaultWorkspace() == null)
-			{
-				nullCount++;
-			}
-			else if (profile.getDefaultWorkspace().equals(sourceWorkspaceId))
-			{
-				Project source = sourceProjectReferences.get(profile.getDefaultProject());
-				if (source != null)
-				{
-					log.info(profile.getDefaultWorkspace() + " - " + profile.getDefaultProject());
-					Project dest = getProjectByName(destProjectReferences, source.getName());
-					if (dest != null)
-					{
-						JsonObject updateProfile = new JsonObject();
-						updateProfile.addProperty("DefaultWorkspace", destWorkspaceId);
-						updateProfile.addProperty("DefaultProject", dest.get_ref());
-						UpdateRequest updateRequest = new UpdateRequest(profile.get_ref(), updateProfile);
-						try
-						{
-							restApi.update(updateRequest);
-						}
-						catch (Exception e)
-						{
-							log.error("Error updating: " + e);
-						}
-						count++;
-						log.info("Updated user " + count);
-					}
-
-				}
-			}
-			log.info(numProcessed++);
-		}
-		log.info("Found " + count + " profiles with a source workspace set to " + sourceWorkspace + "  null=" + nullCount);
+		WorkspaceController.setDefaultWorkspace(sourceWorkspaceId, destWorkspaceId, sourceProjectReferences, destProjectReferences);
 	}
 
 	public static void main(String[] args)
